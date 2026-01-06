@@ -1,0 +1,77 @@
+from ultralytics import YOLO
+import cv2
+import torch
+
+# Wczytanie modelu
+model = YOLO("runs/detect/train17/weights/best.pt")
+
+# Sprawdzenie, czy GPU jest dostępne
+device = 'cuda' if torch.cuda.is_available() else 'cpu'
+model.to(device)
+
+print(f"🔍 Model działa na: {device.upper()}")
+
+# Mapy klas i wartości
+class_values = {
+    0: 0.5, 1: 1.5, 2: 10, 3: 15, 4: 1,
+    5: 2.5, 6: 20, 7: 25, 8: 2, 9: 5, 10: 2.5,
+}
+class_names = {
+    0: "0.5kg", 1: "1.5kg", 2: "10kg", 3: "15kg", 4: "1kg",
+    5: "2.5kg", 6: "20kg", 7: "25kg", 8: "2kg", 9: "5kg", 10: "zacisk",
+}
+
+
+def sum_detected_classes(results, value_map, name_map):
+    total_value = 0
+    class_counts = {}
+    detection_details = []
+
+    for result in results:
+        cls_ids = result.boxes.cls.cpu().numpy()
+        confs = result.boxes.conf.cpu().numpy()
+
+        for i in range(len(cls_ids)):
+            cls_id = int(cls_ids[i])
+            confidence = float(confs[i])
+            class_name = name_map.get(cls_id, f"klasa_{cls_id}")
+
+            class_counts[class_name] = class_counts.get(class_name, 0) + 1
+            total_value += value_map.get(cls_id, 0)
+
+            detection_details.append((class_name, confidence))
+
+    return total_value, class_counts, detection_details
+
+
+def detect_from_image(image_path):
+    image = cv2.imread(image_path)
+
+    if image is None:
+        print(f"Nie udało się wczytać obrazu: {image_path}")
+        return
+
+    results = model(image)
+    total_value, class_counts, detection_details = sum_detected_classes(results, class_values, class_names)
+
+    print("Zliczone klasy:")
+    for class_name, count in class_counts.items():
+        print(f"{class_name}: {count}")
+    
+    print(f"\nŁączna wartość: {total_value}")
+
+    print("\nSzczegóły wykryć:")
+    for i, (class_name, conf) in enumerate(detection_details, 1):
+        print(f"{i}. {class_name} - Pewność: {conf:.2f}")
+
+    for result in results:
+        image = result.plot()
+
+    cv2.imshow("Detection", image)
+    cv2.waitKey(0)
+    cv2.destroyAllWindows()
+
+
+if __name__ == "__main__":
+    image_path = "2.png"
+    detect_from_image(image_path)

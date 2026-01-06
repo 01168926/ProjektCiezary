@@ -1,0 +1,350 @@
+# from ultralytics import YOLO
+# import cv2
+# import torch
+
+# # Wczytanie modelu
+# model = YOLO("runs/detect/train22/weights/best.pt")
+
+# # Sprawdzenie, czy GPU jest dostępne
+# device = 'cuda' if torch.cuda.is_available() else 'cpu'
+# model.to(device)
+# print(f"🔍 Model działa na: {device.upper()}")
+
+# # Mapy klas i wartości
+# class_values = {
+#     0: 0.5, 1: 1.5, 2: 10, 3: 15, 4: 1,
+#     5: 2.5, 6: 20, 7: 25, 8: 2, 9: 5, 10: 2.5,
+# }
+# class_names = {
+#     0: "0.5", 1: "1.5", 2: "10", 3: "15", 4: "1",
+#     5: "2.5", 6: "20", 7: "25", 8: "2", 9: "5", 10: "Zc",
+# }
+
+
+# def sum_detected_classes(results, value_map, name_map):
+#     total_value = 0
+#     class_counts = {}
+#     detection_details = []
+
+#     for result in results:
+#         cls_ids = result.boxes.cls.cpu().numpy()
+#         confs = result.boxes.conf.cpu().numpy()
+
+#         for i in range(len(cls_ids)):
+#             cls_id = int(cls_ids[i])
+#             confidence = float(confs[i])
+#             class_name = name_map.get(cls_id, f"klasa_{cls_id}")
+
+#             class_counts[class_name] = class_counts.get(class_name, 0) + 1
+#             total_value += value_map.get(cls_id, 0)
+#             detection_details.append((class_name, confidence))
+
+#     return total_value, class_counts, detection_details
+
+
+# def detect_from_image(image_path):
+#     image = cv2.imread(image_path)
+
+#     if image is None:
+#         print(f"Nie udało się wczytać obrazu: {image_path}")
+#         return
+
+#     # Wykrywanie obiektów
+#     results = model(image)
+#     total_value, class_counts, detection_details = sum_detected_classes(results, class_values, class_names)
+
+#     print("Zliczone klasy:")
+#     for class_name, count in class_counts.items():
+#         print(f"{class_name}: {count}")
+#     print(f"\nŁączna wartość: {total_value}\n")
+
+#     # Rysowanie ramek i nazw klas w jednej poziomej linii
+#     for result in results:
+#         boxes = result.boxes.xyxy.cpu().numpy()
+#         cls_ids = result.boxes.cls.cpu().numpy()
+
+#         if len(boxes) == 0:
+#             continue
+
+#         # Wyznacz wspólną wysokość dla napisów (np. 40 pikseli nad najwyższym obiektem)
+#         top_y = int(min(box[1] for box in boxes)) - 40
+#         if top_y < 20:
+#             top_y = 20  # aby nie wyjechało poza kadr
+
+#         # Rysowanie ramek i napisów na tej samej wysokości
+#         for i in range(len(boxes)):
+#             x1, y1, x2, y2 = map(int, boxes[i])
+#             cls_id = int(cls_ids[i])
+#             class_name = class_names.get(cls_id, f"klasa_{cls_id}")
+
+#             # Ramka
+#             cv2.rectangle(image, (x1, y1), (x2, y2), (0, 255, 0), 2)
+
+#             # Tekst — na wspólnej linii
+#             text_x = x1 + (x2 - x1) // 4  # środek mniej więcej nad obiektem
+#             cv2.putText(
+#                 image,
+#                 class_name,
+#                 (text_x, top_y),
+#                 cv2.FONT_HERSHEY_SIMPLEX,
+#                 0.45,        # czcionka 2x mniejsza
+#                 (0, 0, 255), # czerwony kolor
+#                 1,           # cieńsza o ~30%
+#                 cv2.LINE_AA
+#             )
+#     image = cv2.resize(image, None, fx=2, fy=2, interpolation=cv2.INTER_LINEAR)
+#     # Wyświetlanie obrazu
+#     cv2.imshow("Detection", image)
+#     cv2.waitKey(0)
+#     cv2.destroyAllWindows()
+
+
+# if __name__ == "__main__":
+#     image_path = "2.png"
+#     detect_from_image(image_path)
+
+
+
+
+
+
+
+
+
+
+
+
+
+import os
+import cv2
+import torch
+import shutil
+import numpy as np
+from ultralytics import YOLO
+
+# ===============================
+# KONFIGURACJA ŚCIEŻEK
+# ===============================
+input_folder = "do_oznaczenia"
+output_folder_ok = "oznaczone"
+output_folder_fix = "do_poprawy"
+
+images_folder = os.path.join(output_folder_ok, "images")
+labels_folder = os.path.join(output_folder_ok, "labels")
+
+os.makedirs(images_folder, exist_ok=True)
+os.makedirs(labels_folder, exist_ok=True)
+os.makedirs(output_folder_fix, exist_ok=True)
+
+# ===============================
+# WCZYTANIE MODELU
+# ===============================
+model = YOLO("runs/detect/train22/weights/best.pt")
+device = 'cuda' if torch.cuda.is_available() else 'cpu'
+model.to(device)
+print(f"🔍 Model działa na: {device.upper()}")
+
+# ===============================
+# MAPY KLAS
+# ===============================
+class_names = {
+    0: "0.5", 
+    1: "1.5", 
+    2: "10", 
+    3: "15", 
+    4: "1",
+    5: "2.5", 
+    6: "20", 
+    7: "25", 
+    8: "2", 
+    9: "5", 
+    10: "Zc",
+}
+
+# ===============================
+# FUNKCJE POMOCNICZE
+# ===============================
+def crop_and_resize(image, results, target_size=640):
+    if len(results) == 0 or len(results[0].boxes) == 0:
+        return cv2.resize(image, (target_size, target_size), interpolation=cv2.INTER_AREA), None
+
+    boxes = results[0].boxes.xyxy.cpu().numpy()
+    h, w = image.shape[:2]
+
+    x1 = max(0, int(np.min(boxes[:, 0])))
+    y1 = max(0, int(np.min(boxes[:, 1])))
+    x2 = min(w, int(np.max(boxes[:, 2])))
+    y2 = min(h, int(np.max(boxes[:, 3])))
+
+    margin_x = int((x2 - x1) * 0.1)
+    margin_y = int((y2 - y1) * 0.1)
+    x1 = max(0, x1 - margin_x)
+    y1 = max(0, y1 - margin_y)
+    x2 = min(w, x2 + margin_x)
+    y2 = min(h, y2 + margin_y)
+
+    cropped = image[y1:y2, x1:x2]
+    ch, cw = cropped.shape[:2]
+
+    scale = min(target_size / cw, target_size / ch)
+    new_w, new_h = int(cw * scale), int(ch * scale)
+    resized = cv2.resize(cropped, (new_w, new_h), interpolation=cv2.INTER_LINEAR)
+
+    result_img = np.zeros((target_size, target_size, 3), dtype=np.uint8)
+    x_offset = (target_size - new_w) // 2
+    y_offset = (target_size - new_h) // 2
+    result_img[y_offset:y_offset + new_h, x_offset:x_offset + new_w] = resized
+
+    return result_img, (x1, y1, scale, x_offset, y_offset, w, h)
+
+
+def save_yolo_labels(results, output_path, transform):
+    x1_off, y1_off, scale, x_off, y_off, orig_w, orig_h = transform
+    label_path = os.path.join(labels_folder, os.path.splitext(os.path.basename(output_path))[0] + ".txt")
+
+    with open(label_path, "w") as f:
+        for result in results:
+            boxes = result.boxes.xyxy.cpu().numpy()
+            cls_ids = result.boxes.cls.cpu().numpy()
+
+            for i in range(len(boxes)):
+                x1, y1, x2, y2 = boxes[i]
+                x1 = (x1 - x1_off) * scale + x_off
+                x2 = (x2 - x1_off) * scale + x_off
+                y1 = (y1 - y1_off) * scale + y_off
+                y2 = (y2 - y1_off) * scale + y_off
+
+                xc = ((x1 + x2) / 2) / 640
+                yc = ((y1 + y2) / 2) / 640
+                w = (x2 - x1) / 640
+                h = (y2 - y1) / 640
+
+                cls_id = int(cls_ids[i])
+                f.write(f"{cls_id} {xc:.6f} {yc:.6f} {w:.6f} {h:.6f}\n")
+
+
+def detect_and_show(image_path):
+    image = cv2.imread(image_path)
+    if image is None:
+        return None, None
+
+    results = model(image)
+
+    all_class_names = []
+
+    for result in results:
+        boxes = result.boxes.xyxy.cpu().numpy()
+        cls_ids = result.boxes.cls.cpu().numpy()
+
+        for i in range(len(boxes)):
+            x1, y1, x2, y2 = map(int, boxes[i])
+            cls_id = int(cls_ids[i])
+            class_name = class_names.get(cls_id, f"klasa_{cls_id}")
+            all_class_names.append(class_name)
+
+            # Rysowanie prostokąta wokół obiektu
+            cv2.rectangle(image, (x1, y1), (x2, y2), (0, 0, 255), 2)
+
+            # Wyznaczenie pozycji tekstu - nad obiektem
+            text_y = max(y1 - 10, 10)
+            text_x = x1
+
+            # Rysowanie nazwy klasy poziomo nad obiektem
+            cv2.putText(
+                image,
+                class_name,
+                (text_x, text_y),
+                cv2.FONT_HERSHEY_SIMPLEX,
+                3,            # rozmiar czcionki
+                (0, 255, 0),  # czerwony kolor
+                5,            # grubość linii
+                cv2.LINE_AA
+            )
+
+    # Pasek u góry z listą wszystkich rozpoznanych klas
+        # Pasek u góry z listą wszystkich rozpoznanych klas (z powtórzeniami)
+    if all_class_names:
+        header_text = " | ".join(all_class_names)  # każda klasa wypisana tyle razy ile wykryto
+
+        # Wysokość i tło paska
+        header_height = 100
+        cv2.rectangle(image, (0, 0), (image.shape[1], header_height), (50, 50, 50), -1)  # ciemnoszare tło
+
+        # Tekst w pasku
+        cv2.putText(
+            image,
+            header_text,
+            (50, int(header_height * 0.7)),
+            cv2.FONT_HERSHEY_SIMPLEX,
+            2,
+            (255, 255, 255),  # biały tekst
+            2,
+            cv2.LINE_AA
+        )
+
+
+    # Pomniejszenie obrazu 0.4x
+    image = cv2.resize(image, None, fx=0.3, fy=0.3, interpolation=cv2.INTER_LINEAR)
+    cv2.imshow("Detection", image)
+    return image, results
+
+
+
+
+
+
+
+
+
+# ===============================
+# GŁÓWNA PĘTLA
+# ===============================
+def main():
+    image_files = [f for f in os.listdir(input_folder) if f.lower().endswith((".png", ".jpg", ".jpeg"))]
+
+    if not image_files:
+        print(" Brak plików w folderze 'do_oznaczenia'.")
+        return
+
+    for idx, img_name in enumerate(image_files, start=1):
+        img_path = os.path.join(input_folder, img_name)
+        image, results = detect_and_show(img_path)
+        if image is None:
+            continue
+
+        print(f"\n ({idx}/{len(image_files)}) Przeglądasz: {img_name}")
+        print("   [O] – oznaczone (zapisz 640x640 + etykiety YOLO)")
+        print("   [P] – do poprawy (bez etykiet)")
+        print("   [ESC] – zakończ program\n")
+
+        key = cv2.waitKey(0) & 0xFF
+
+        if key == ord('o') or key == ord('O'):
+            orig_image = cv2.imread(img_path)
+            cropped, transform = crop_and_resize(orig_image, results)
+
+            # Zapis JPG do images_folder
+            base_name = os.path.splitext(img_name)[0]
+            out_path = os.path.join(images_folder, base_name + ".jpg")
+            cv2.imwrite(out_path, cropped)
+
+            # Zapis etykiet YOLO
+            if transform:
+                save_yolo_labels(results, out_path, transform)
+
+            os.remove(img_path)
+            print(f" Zapisano {base_name}.jpg w '{images_folder}' i etykiety w '{labels_folder}'")
+
+        elif key == ord('p') or key == ord('P'):
+            shutil.move(img_path, os.path.join(output_folder_fix, img_name))
+            print(f" Przeniesiono {img_name} do '{output_folder_fix}' (bez etykiet)")
+
+        elif key == 27:  # ESC
+            print(" Zakończono działanie programu.")
+            break
+
+        cv2.destroyAllWindows()
+
+
+if __name__ == "__main__":
+    main()

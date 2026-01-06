@@ -1,0 +1,48 @@
+# """
+# from ultralytics import YOLO
+# import torch
+
+# model = YOLO("yolo12n.pt")
+
+# results = model.train(data="config.yaml", epochs=5, imgsz=640, device="cuda", workers=0)
+
+# """
+
+
+# from ultralytics import YOLO
+
+# def main():
+#     model = YOLO("yolo11n.pt")  # Ścieżka do twojego modelu
+#     model.train(data="data1.yaml", epochs=100, imgsz=640, device="cuda")
+
+# if __name__ == "__main__":
+
+#     import multiprocessing
+#     multiprocessing.freeze_support()  # Opcjonalnie, ale bezpiecznie dodać
+#     main()
+
+
+
+from ultralytics import YOLO
+
+def main():
+    # Inicjalizacja modelu
+    model = YOLO("yolo11m.pt")  # Ścieżka do twojego modelu
+
+    # Trening modelu
+    model.train(
+        data="data1.yaml",
+        epochs=75,
+        imgsz=640,
+        device="cuda"
+    )
+
+                                            # Ocena modelu na zbiorze testowym
+    print("\n--- Walidacja na zbiorze TEST ---")
+    results = model.val(split="test")       # split="test" używa zbioru testowego z data1.yaml
+    print(results)                          # Wyświetlenie wyników
+
+if __name__ == "__main__":
+    import multiprocessing
+    multiprocessing.freeze_support()        # Opcjonalnie, ale bezpiecznie dodać
+    main()
